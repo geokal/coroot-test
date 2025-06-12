@@ -21,7 +21,7 @@ services:
     command:
       - '--data-dir=/data'
       - '--bootstrap-prometheus-url=http://prometheus:9090'
-      - '--bootstrap-refresh-interval=15s'
+      - '--bootstrap-refresh-interval=1s'
       - '--bootstrap-clickhouse-address=clickhouse:9000'
     environment:
       - LICENSE_KEY=${LICENSE_KEY:-}
@@ -47,6 +47,8 @@ services:
       - '--collector-endpoint=http://coroot:8080'
       - '--cgroupfs-root=/host/sys/fs/cgroup'
       - '--wal-dir=/data'
+      - '--scrape-interval=5s'
+    # - '--api-key=YOUR_API_KEY'
 
   cluster-agent:
     restart: always
@@ -66,6 +68,7 @@ services:
     image: prom/prometheus:latest
     volumes:
       - prometheus_data:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -73,6 +76,10 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
       - '--web.enable-remote-write-receiver'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.size=512MB'
+      - '--storage.tsdb.wal-compression'
+      - '--storage.tsdb.no-lockfile'
     ports:
       - '127.0.0.1:9090:9090'
 
@@ -93,19 +100,22 @@ services:
         soft: 262144
         hard: 262144
   
-  producer:
-    build: ./producer
+  iperf3-server:
+    image: networkstatic/iperf3
+    command: "-s -p 5201 --verbose"
     ports:
-      - "9005:9005"
+      - "5201:5201"
     labels:
       - "coroot.monitored=true"
       - "coroot.service.type=streaming"
       - "coroot.logs.enabled=true"
 
-  consumer:
-    build: ./consumer
+  iperf3-client:
+    image: networkstatic/iperf3
+    command: "-c iperf3-server -p 5201 -t 0 -b 10M --verbose"
+    restart: always
     depends_on:
-      - producer
+      - iperf3-server
     labels:
       - "coroot.monitored=true"
       - "coroot.service.type=streaming"
